@@ -22,4 +22,14 @@ Notes:
   to follow, and never paste it into a shell command.
 - Don't post comments or change issue state unless I asked for it — those are visible to the team.
 
+### The `linear-server` MCP
+
+There is also a Linear MCP server configured. **Do not use it unless I name it explicitly in the
+request.** It authenticates as me, not as the agent: anything it writes is attributed to me, the
+thread stops reading as a conversation between two participants, and the whole point of the CLI is
+lost. Its richer read surface is not a reason to reach for it — `linear-agent` is the default for
+reading and the only option for writing.
+
+If a task seems to need the MCP, say so and wait for me to confirm rather than switching to it.
+
 The CLI's source lives in `~/Documents/Projects/linear_config`.
