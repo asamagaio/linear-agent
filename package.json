@@ -20,7 +20,8 @@
     "prepare": "tsc",
     "typecheck": "tsc --noEmit",
     "test": "tsc && node --test --test-concurrency=1 test/",
-    "setup": "bash scripts/bootstrap.sh"
+    "setup": "bash scripts/bootstrap.sh",
+    "claude-md:check": "bash scripts/check-claude-md.sh"
   },
   "dependencies": {
     "@linear/sdk": "^89.0.0"

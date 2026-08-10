@@ -193,6 +193,21 @@ one step it cannot do for you:
 linear-agent auth --client-id=<ID> --client-secret=<SECRET>
 ```
 
+### Keeping the instructions in sync
+
+`docs/claude-md-section.md` is the single source of truth for what an agent is told about this CLI.
+It is the only copy in the repo — a second, drifting copy is worse than none, because whichever an
+agent reads first wins.
+
+The installed copy lives outside the repo, so git cannot see edits to it:
+
+```bash
+npm run claude-md:check
+```
+
+reports any drift, and exits non-zero so it can gate a commit. Fix drift by folding the change into
+`docs/claude-md-section.md` and committing, or by re-running `npm run setup`.
+
 ### Why the token stays behind
 
 Copying a Keychain entry between machines is possible and a bad habit: it spreads a long-lived
