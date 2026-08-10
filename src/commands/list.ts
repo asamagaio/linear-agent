@@ -1,5 +1,6 @@
 import { getContext } from "../client.js";
 import { LIST_ISSUES, type GqlIssueSummary } from "../gql.js";
+import { fetchTeamByKey, resolveProject } from "../resolve.js";
 import { actorLabel, emitJson, line, truncate } from "../output.js";
 import { getPositiveInt, getValue, type ParsedArgs } from "../args.js";
 
@@ -7,7 +8,7 @@ const DEFAULT_LIMIT = 25;
 const MAX_LIMIT = 250;
 
 export const LIST_FLAGS = {
-  value: ["team", "state", "limit"],
+  value: ["team", "state", "project", "limit"],
   boolean: ["delegated"],
 } as const;
 
@@ -27,6 +28,9 @@ function summaryToJson(issue: GqlIssueSummary) {
       ? { id: issue.delegate.id, name: issue.delegate.displayName || issue.delegate.name }
       : null,
     labels: (issue.labels?.nodes ?? []).map((label) => label.name),
+    project: issue.project
+      ? { name: issue.project.name, status: issue.project.status?.name ?? null }
+      : null,
     updated_at: issue.updatedAt,
     id: issue.id,
   };
@@ -37,12 +41,14 @@ export async function listCommand(args: ParsedArgs, json: boolean): Promise<void
 
   const team = getValue(args, "team");
   const state = getValue(args, "state");
+  const project = getValue(args, "project");
   const delegated = args.booleans.has("delegated");
   const limit = getPositiveInt(args, "limit", DEFAULT_LIMIT, MAX_LIMIT);
 
   const filter: Record<string, unknown> = {};
   if (team) filter["team"] = { key: { eqIgnoreCase: team } };
   if (state) filter["state"] = { name: { eqIgnoreCase: state } };
+  if (project) filter["project"] = { name: { eqIgnoreCase: project } };
   if (delegated) filter["delegate"] = { id: { eq: ctx.credentials.app_user_id } };
 
   const data = await ctx.raw<{
@@ -54,6 +60,16 @@ export async function listCommand(args: ParsedArgs, json: boolean): Promise<void
 
   const issues = data.issues.nodes;
 
+  // An empty result is ambiguous: no matching work, or a typo in the filter.
+  // For an agent branching on the output the difference matters — "nothing to
+  // do in project X" is a wrong conclusion if X does not exist. Verify the
+  // names only when there is nothing to report, so the common path stays at
+  // one request.
+  if (issues.length === 0) {
+    if (project) await resolveProject(ctx, project);
+    if (team) await fetchTeamByKey(ctx, team);
+  }
+
   if (json) {
     emitJson({
       count: issues.length,
@@ -61,6 +77,7 @@ export async function listCommand(args: ParsedArgs, json: boolean): Promise<void
       filters: {
         team: team ?? null,
         state: state ?? null,
+        project: project ?? null,
         delegated_to_app: delegated,
         limit,
       },

@@ -5,6 +5,7 @@ Tickets live in Linear (workspace `acme`). Teams: `ENG` (Apps) and `OPS` (Operat
 comments are attributable and I can reply to them directly from my phone.
 
 - `linear-agent list --delegated --json` first — that is what I have handed to you
+- `linear-agent projects` to see the projects, `linear-agent list --project "Platform"` for their issues
 - `linear-agent read OPS-7 --json` before starting work on a ticket
 - `linear-agent comment OPS-7 -` to post progress, findings, or questions (body on stdin)
 - `linear-agent status OPS-7 "In Progress"` when you pick work up, `"Done"` when it's finished

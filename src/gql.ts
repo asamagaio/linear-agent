@@ -50,6 +50,76 @@ export const ISSUE_SUMMARY = /* GraphQL */ `
         name
       }
     }
+    project {
+      id
+      name
+      status {
+        name
+        type
+      }
+    }
+  }
+`;
+
+/**
+ * Projects are workspace-level and span teams, so `status` here is a
+ * ProjectStatus object — not the plain `state` an issue has. Verified against
+ * the live schema; Project has no `state` field at all.
+ */
+export const PROJECT_FIELDS = /* GraphQL */ `
+  fragment ProjectFields on Project {
+    id
+    name
+    description
+    url
+    progress
+    health
+    startDate
+    targetDate
+    status {
+      name
+      type
+    }
+    lead {
+      ...UserFields
+    }
+    teams(first: 10) {
+      nodes {
+        key
+        name
+      }
+    }
+  }
+`;
+
+export const LIST_PROJECTS = /* GraphQL */ `
+  ${USER_FIELDS}
+  ${PROJECT_FIELDS}
+  query ListProjects($filter: ProjectFilter, $first: Int!) {
+    projects(filter: $filter, first: $first, orderBy: updatedAt) {
+      nodes {
+        ...ProjectFields
+      }
+      pageInfo {
+        hasNextPage
+      }
+    }
+  }
+`;
+
+export const PROJECT_BY_NAME = /* GraphQL */ `
+  query ProjectByName($name: String!) {
+    projects(filter: { name: { eqIgnoreCase: $name } }, first: 25) {
+      nodes {
+        id
+        name
+        teams(first: 10) {
+          nodes {
+            key
+          }
+        }
+      }
+    }
   }
 `;
 
@@ -345,6 +415,26 @@ export interface GqlComment {
   externalUser?: { id: string; name: string } | null;
 }
 
+export interface GqlProjectStatus {
+  name: string;
+  type: string;
+}
+
+export interface GqlProject {
+  id: string;
+  name: string;
+  description?: string | null;
+  url: string;
+  /** 0..1 */
+  progress: number;
+  health?: string | null;
+  startDate?: string | null;
+  targetDate?: string | null;
+  status: GqlProjectStatus | null;
+  lead?: GqlUser | null;
+  teams?: { nodes: Array<{ key: string; name: string }> };
+}
+
 export interface GqlIssueSummary {
   id: string;
   identifier: string;
@@ -360,6 +450,11 @@ export interface GqlIssueSummary {
   assignee?: GqlUser | null;
   delegate?: GqlUser | null;
   labels?: { nodes: Array<{ id: string; name: string }> };
+  project?: {
+    id: string;
+    name: string;
+    status: GqlProjectStatus | null;
+  } | null;
 }
 
 export interface GqlIssueRef {

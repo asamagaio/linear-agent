@@ -9,6 +9,7 @@ import {
   ISSUE_REF_BY_NUMBER,
   ISSUE_REF_BY_UUID,
   LABEL_BY_NAME,
+  PROJECT_BY_NAME,
   TEAM_BY_KEY,
   type GqlIssueDetail,
   type GqlIssueRef,
@@ -241,6 +242,37 @@ export function resolveStateByName(
     `Team ${teamLabel} has no workflow state named "${name}".`,
     available === "" ? undefined : `Valid states:\n${available}`,
   );
+}
+
+/**
+ * Resolve a project by name, case-insensitively. Projects are workspace-level
+ * and can span teams, so an ambiguous name is an error rather than a guess.
+ */
+export async function resolveProject(
+  ctx: Context,
+  name: string,
+): Promise<{ id: string; name: string }> {
+  const data = await ctx.raw<{
+    projects: { nodes: Array<{ id: string; name: string; teams?: { nodes: Array<{ key: string }> } }> };
+  }>(PROJECT_BY_NAME, { name });
+
+  const candidates = data.projects.nodes;
+  if (candidates.length === 0) {
+    throw new NotFoundError(
+      `No project named "${name}" is visible to this app.`,
+      "Check the spelling, or run `linear-agent projects` to see what exists.",
+    );
+  }
+  if (candidates.length > 1) {
+    const listed = candidates
+      .map((p) => `  - ${p.name} (teams: ${(p.teams?.nodes ?? []).map((t) => t.key).join(", ") || "none"})`)
+      .join("\n");
+    throw new NotFoundError(
+      `"${name}" matches more than one project.`,
+      `Matches:\n${listed}`,
+    );
+  }
+  return { id: candidates[0]!.id, name: candidates[0]!.name };
 }
 
 /** Resolve a label name to an id, preferring the team's own label. */

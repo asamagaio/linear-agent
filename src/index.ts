@@ -8,6 +8,7 @@ import { readCommand } from "./commands/read.js";
 import { commentCommand } from "./commands/comment.js";
 import { statusCommand } from "./commands/status.js";
 import { CREATE_FLAGS, createCommand } from "./commands/create.js";
+import { PROJECTS_FLAGS, projectsCommand } from "./commands/projects.js";
 
 const VERSION = "1.0.0";
 
@@ -18,11 +19,12 @@ Usage:
   linear-agent auth --status
   linear-agent auth --logout
   linear-agent whoami
-  linear-agent list [--team KEY] [--state NAME] [--delegated] [--limit N]
+  linear-agent list [--team KEY] [--state NAME] [--project NAME] [--delegated] [--limit N]
+  linear-agent projects [--team KEY] [--status NAME] [--limit N]
   linear-agent read <ID>
   linear-agent comment <ID> <body|->
   linear-agent status <ID> <state-name>
-  linear-agent create --team KEY --title T [--description D|-] [--label L]...
+  linear-agent create --team KEY --title T [--description D|-] [--label L]... [--project NAME]
 
 Every command accepts --json for machine-readable output.
 <ID> is a human identifier such as ENG-42.
@@ -33,7 +35,7 @@ Exit codes:
   1  unexpected failure
   2  bad usage
   3  missing, unreadable, or non-app credentials
-  4  issue, team, label or workflow state not found
+  4  issue, team, label, project or workflow state not found
   5  rate limited after exhausting retries
   6  the Linear API rejected the request
 `;
@@ -51,6 +53,7 @@ const COMMANDS: Record<string, CommandDef> = {
   comment: { flags: {}, run: commentCommand },
   status: { flags: {}, run: statusCommand },
   create: { flags: CREATE_FLAGS, run: createCommand },
+  projects: { flags: PROJECTS_FLAGS, run: projectsCommand },
 };
 
 function reportFailure(error: unknown): ExitCode {
@@ -109,9 +112,10 @@ async function main(): Promise<ExitCode> {
  * Setting `exitCode` and letting the loop drain naturally, rather than calling
  * process.exit(), so piped stdout is never truncated mid-write. Nothing in this
  * CLI is supposed to outlive the command: the OAuth listener is closed in a
- * `finally`, and every timer is unref'd. The watchdog below is a backstop —
- * an unref'd timer only fires if something else is still holding the loop open,
- * in which case exiting loudly beats hanging forever.
+ * `finally`, and the only ref'd timer is the rate-limit backoff, whose total
+ * wait is capped. The watchdog below is a backstop — an unref'd timer only
+ * fires if something else is still holding the loop open, in which case exiting
+ * loudly beats hanging forever.
  */
 const WATCHDOG_MS = 15_000;
 

@@ -48,6 +48,9 @@ function issueToJson(issue: GqlIssueDetail) {
     team: issue.team ? { key: issue.team.key, name: issue.team.name } : null,
     priority: issue.priorityLabel,
     labels: (issue.labels?.nodes ?? []).map((label) => label.name),
+    project: issue.project
+      ? { name: issue.project.name, status: issue.project.status?.name ?? null }
+      : null,
     assignee: issue.assignee
       ? {
           id: issue.assignee.id,
@@ -92,6 +95,7 @@ export async function readCommand(args: ParsedArgs, json: boolean): Promise<void
   line();
   line(`State:     ${issue.state?.name ?? "unknown"}`);
   line(`Team:      ${issue.team ? `${issue.team.key} — ${issue.team.name}` : "unknown"}`);
+  line(`Project:   ${issue.project ? issue.project.name + (issue.project.status ? ` (${issue.project.status.name})` : "") : "none"}`);
   line(`Priority:  ${issue.priorityLabel || "none"}`);
   line(`Assignee:  ${issue.assignee ? actorLabel(issue.assignee) : "unassigned"}`);
   line(`Delegate:  ${issue.delegate ? actorLabel(issue.delegate) : "none"}`);

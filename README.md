@@ -88,11 +88,12 @@ linear-agent auth --logout    # remove credentials from both stores
 | Command | Behaviour |
 |---|---|
 | `linear-agent whoami` | Prints the app user identity and confirms the token is an app actor, not a user actor. |
-| `linear-agent list [--team KEY] [--state NAME] [--delegated] [--limit N]` | Lists issues, most recently updated first. `--delegated` filters to issues delegated to this app. |
+| `linear-agent list [--team KEY] [--state NAME] [--project NAME] [--delegated] [--limit N]` | Lists issues, most recently updated first. `--delegated` filters to issues delegated to this app. |
+| `linear-agent projects [--team KEY] [--status NAME] [--limit N]` | Lists projects with status, progress, teams and lead. |
 | `linear-agent read <ID>` | Full issue: title, description, state, labels, assignee, delegate, and all comments in order with authors and timestamps. |
 | `linear-agent comment <ID> <body>` | Posts a comment as the app. Pass `-` to read the body from stdin. |
 | `linear-agent status <ID> <state-name>` | Moves the issue to a workflow state, resolved by name. Reports the previous and new state. |
-| `linear-agent create --team KEY --title T [--description D] [--label L]` | Creates an issue as the app. `--label` is repeatable. |
+| `linear-agent create --team KEY --title T [--description D] [--label L] [--project NAME]` | Creates an issue as the app. `--label` is repeatable. |
 
 Every command accepts `--json`.
 
@@ -110,6 +111,24 @@ linear-agent status ENG-42 "In Progress"
 
 Matched case-insensitively against the team's workflow states. On a miss, the error lists the states
 that would have worked.
+
+### Projects
+
+Projects are workspace-level and can span teams, so they are matched by name rather than by a key:
+
+```bash
+linear-agent projects --team ENG
+linear-agent list --project "Platform" --json
+linear-agent create --team ENG --title "..." --project "Platform"
+```
+
+`read` and `list` both report the issue's project. A name that matches more than one project is an
+error listing the matches rather than a silent guess.
+
+When `list` returns nothing *and* a `--project` or `--team` filter was given, the name is verified
+before reporting an empty result — a typo would otherwise look like "no work here", which is a wrong
+conclusion rather than a missing one. `--state` does not get this treatment, since workflow states
+are per-team and there is no team to check against when the filter is used alone.
 
 ### Markdown bodies
 
@@ -131,7 +150,7 @@ Claude Code branches on these, so they are part of the contract.
 | `1` | unexpected failure |
 | `2` | bad usage |
 | `3` | missing, unreadable, or non-app credentials |
-| `4` | issue, team, label, or workflow state not found |
+| `4` | issue, team, label, project, or workflow state not found |
 | `5` | rate limited after exhausting retries |
 | `6` | the Linear API rejected the request |
 
