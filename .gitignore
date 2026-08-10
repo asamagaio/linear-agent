@@ -1,0 +1,10 @@
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Never commit credentials. The CLI stores them in the macOS Keychain or in
+# ~/.config/linear-agent/, but guard against a stray copy landing here.
+credentials.json
+*.token
+.env
+.env.*

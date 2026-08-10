@@ -1,0 +1,34 @@
+{
+  "name": "linear-agent",
+  "version": "1.0.0",
+  "description": "CLI that lets a coding agent read and write Linear issues under its own app identity",
+  "type": "module",
+  "bin": {
+    "linear-agent": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "docs",
+    "scripts"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "prepare": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "tsc && node --test --test-concurrency=1 test/",
+    "setup": "bash scripts/bootstrap.sh"
+  },
+  "dependencies": {
+    "@linear/sdk": "^89.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "graphql": "^16.14.2",
+    "typescript": "^5.6.0"
+  },
+  "private": true
+}
