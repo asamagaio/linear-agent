@@ -15,7 +15,7 @@ const VERSION = "1.0.0";
 const USAGE = `linear-agent — read and write Linear issues as the agent's own app identity
 
 Usage:
-  linear-agent auth [--client-id ID --client-secret SECRET]
+  linear-agent auth [--client-id ID --client-secret SECRET] [--browser]
   linear-agent auth --status
   linear-agent auth --logout
   linear-agent whoami
@@ -25,6 +25,10 @@ Usage:
   linear-agent comment <ID> <body|->
   linear-agent status <ID> <state-name>
   linear-agent create --team KEY --title T [--description D|-] [--label L]... [--project NAME]
+
+auth uses the client credentials grant: a 30-day app token that renews itself
+on the next 401. --browser is the fallback for an application without that
+grant enabled, and produces a token that lasts a day and cannot renew.
 
 Every command accepts --json for machine-readable output.
 <ID> is a human identifier such as ENG-42.

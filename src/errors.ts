@@ -41,9 +41,21 @@ export class UsageError extends CliError {
 }
 
 export class CredentialError extends CliError {
-  constructor(message: string, hint?: string) {
+  /**
+   * True only for a 401 — Linear understood the token and it is no longer
+   * valid, which is exactly the case a fresh one fixes.
+   *
+   * A 403 is also a CredentialError and is deliberately NOT marked: it means a
+   * missing scope, and a new token carrying the SAME scopes would be refused
+   * identically. Retrying that would spend a round trip to reprint the same
+   * message.
+   */
+  readonly expired: boolean;
+
+  constructor(message: string, hint?: string, expired = false) {
     super(message, EXIT.CREDENTIALS, hint);
     this.name = "CredentialError";
+    this.expired = expired;
   }
 }
 

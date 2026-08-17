@@ -13,7 +13,17 @@ import { CredentialError, registerSecret } from "./errors.js";
 
 const KEYCHAIN_SERVICE = "linear-agent";
 const KEYCHAIN_ACCOUNT = "default";
+/**
+ * The client secret lives in its own Keychain item, beside the token.
+ *
+ * It is here at all because a token that cannot be renewed is a token somebody
+ * re-authorizes through a browser every day. `client_credentials` renews with
+ * nothing but the app's own id and secret — so the CLI must hold them, or the
+ * renewal it is capable of is one it can never perform.
+ */
+const KEYCHAIN_CLIENT_ACCOUNT = "client-secret";
 const KEYCHAIN_LABEL = "linear-agent (Linear app actor token)";
+const KEYCHAIN_CLIENT_LABEL = "linear-agent (Linear OAuth client secret)";
 
 /**
  * `security` reads an interactively-prompted password through a 128 byte
@@ -54,6 +64,23 @@ export interface Credentials {
   app_actor: true;
   scopes: string;
   created_at: string;
+
+  /**
+   * How this token was obtained, and — for `client_credentials` — everything
+   * needed to obtain the next one without a human.
+   *
+   * The authorization_code flow gives a token that lasts a day and a refresh
+   * token this CLI never stored, so it re-authorized through a browser roughly
+   * daily. `client_credentials` gives a 30-day app-actor token that is renewed
+   * by asking again with the app's own id and secret. Absent on credentials
+   * saved before this existed, which simply cannot self-renew — the same
+   * behaviour they had.
+   */
+  grant?: "authorization_code" | "client_credentials";
+  client_id?: string;
+  client_secret?: string;
+  /** ISO 8601. Advisory: the 401 is what actually triggers a renewal. */
+  expires_at?: string;
 }
 
 export type CredentialSource = "keychain" | "file";
@@ -89,11 +116,11 @@ function keychainAvailable(): boolean {
   return process.platform === "darwin";
 }
 
-function keychainRead(): string | undefined {
+function keychainRead(account: string = KEYCHAIN_ACCOUNT): string | undefined {
   if (!keychainAvailable()) return undefined;
   const result = spawnSync(
     "security",
-    ["find-generic-password", "-s", KEYCHAIN_SERVICE, "-a", KEYCHAIN_ACCOUNT, "-w"],
+    ["find-generic-password", "-s", KEYCHAIN_SERVICE, "-a", account, "-w"],
     { encoding: "utf8" },
   );
   if (result.status !== 0) return undefined;
@@ -101,25 +128,30 @@ function keychainRead(): string | undefined {
   return value === "" ? undefined : value;
 }
 
-function keychainDelete(): boolean {
+function keychainDelete(account: string = KEYCHAIN_ACCOUNT): boolean {
   if (!keychainAvailable()) return false;
   const result = spawnSync(
     "security",
-    ["delete-generic-password", "-s", KEYCHAIN_SERVICE, "-a", KEYCHAIN_ACCOUNT],
+    ["delete-generic-password", "-s", KEYCHAIN_SERVICE, "-a", account],
     { stdio: "ignore" },
   );
   return result.status === 0;
 }
 
-function keychainAdd(token: string, viaArgv: boolean): boolean {
+function keychainAdd(
+  token: string,
+  viaArgv: boolean,
+  account: string = KEYCHAIN_ACCOUNT,
+  label: string = KEYCHAIN_LABEL,
+): boolean {
   const args = [
     "add-generic-password",
     "-s",
     KEYCHAIN_SERVICE,
     "-a",
-    KEYCHAIN_ACCOUNT,
+    account,
     "-l",
-    KEYCHAIN_LABEL,
+    label,
     "-D",
     "application password",
     "-w",
@@ -137,21 +169,25 @@ function keychainAdd(token: string, viaArgv: boolean): boolean {
   return result.status === 0;
 }
 
-/** Store the token. Returns false if the Keychain could not take it verbatim. */
-function keychainWrite(token: string): boolean {
+/** Store a secret. Returns false if the Keychain could not take it verbatim. */
+function keychainWrite(
+  token: string,
+  account: string = KEYCHAIN_ACCOUNT,
+  label: string = KEYCHAIN_LABEL,
+): boolean {
   if (!keychainAvailable()) return false;
 
   // `add-generic-password` will not overwrite, so clear any previous entry.
-  keychainDelete();
+  keychainDelete(account);
 
   const viaArgv = token.length > KEYCHAIN_STDIN_LIMIT;
-  if (!keychainAdd(token, viaArgv)) return false;
+  if (!keychainAdd(token, viaArgv, account, label)) return false;
 
   // Trust the round trip, not the exit status: silent truncation is the exact
   // failure mode this guards against.
-  if (keychainRead() === token) return true;
+  if (keychainRead(account) === token) return true;
 
-  keychainDelete();
+  keychainDelete(account);
   return false;
 }
 
@@ -169,8 +205,14 @@ interface StoredFile {
   app_actor: true;
   scopes: string;
   created_at: string;
+  grant?: "authorization_code" | "client_credentials";
+  /** Not a secret — it identifies the app, it does not authenticate it. */
+  client_id?: string;
+  expires_at?: string;
   /** Present only when the Keychain could not hold the token. */
   access_token?: string;
+  /** Likewise — see saveCredentials. */
+  client_secret?: string;
 }
 
 function fileRead(): string | undefined {
@@ -242,6 +284,8 @@ function parseMetadata(raw: string): StoredFile {
   }
 
   const token = record["access_token"];
+  const clientSecret = record["client_secret"];
+  const grant = record["grant"];
   return {
     version: 1,
     app_user_id: record["app_user_id"] as string,
@@ -252,7 +296,19 @@ function parseMetadata(raw: string): StoredFile {
     app_actor: true,
     scopes: (record["scopes"] as string) ?? "",
     created_at: (record["created_at"] as string) ?? "",
+    ...(grant === "client_credentials" || grant === "authorization_code"
+      ? { grant }
+      : {}),
+    ...(typeof record["client_id"] === "string" && record["client_id"] !== ""
+      ? { client_id: record["client_id"] as string }
+      : {}),
+    ...(typeof record["expires_at"] === "string"
+      ? { expires_at: record["expires_at"] as string }
+      : {}),
     ...(typeof token === "string" && token !== "" ? { access_token: token } : {}),
+    ...(typeof clientSecret === "string" && clientSecret !== ""
+      ? { client_secret: clientSecret }
+      : {}),
   };
 }
 
@@ -301,8 +357,21 @@ export function loadCredentials(): LoadedCredentials {
 
   registerSecret(token);
 
-  const { access_token: _ignored, ...rest } = metadata;
-  return { credentials: { ...rest, access_token: token }, source };
+  // The client secret follows the token's store: Keychain when the token is
+  // there, the file when it is not. Absent is normal — a credential saved
+  // before self-renewal existed, or one obtained through the browser flow.
+  const clientSecret = metadata.client_secret ?? keychainRead(KEYCHAIN_CLIENT_ACCOUNT);
+  if (clientSecret) registerSecret(clientSecret);
+
+  const { access_token: _ignored, client_secret: _alsoIgnored, ...rest } = metadata;
+  return {
+    credentials: {
+      ...rest,
+      access_token: token,
+      ...(clientSecret ? { client_secret: clientSecret } : {}),
+    },
+    source,
+  };
 }
 
 /**
@@ -311,6 +380,7 @@ export function loadCredentials(): LoadedCredentials {
  */
 export function saveCredentials(credentials: Credentials): CredentialSource {
   registerSecret(credentials.access_token);
+  if (credentials.client_secret) registerSecret(credentials.client_secret);
 
   const metadata: StoredFile = {
     version: 1,
@@ -322,15 +392,47 @@ export function saveCredentials(credentials: Credentials): CredentialSource {
     app_actor: true,
     scopes: credentials.scopes,
     created_at: credentials.created_at,
+    ...(credentials.grant ? { grant: credentials.grant } : {}),
+    ...(credentials.client_id ? { client_id: credentials.client_id } : {}),
+    ...(credentials.expires_at ? { expires_at: credentials.expires_at } : {}),
   };
 
+  // A stale secret from a previous authorization must not survive one that did
+  // not supply it — it would renew into an app the operator has moved off.
+  keychainDelete(KEYCHAIN_CLIENT_ACCOUNT);
+
   if (keychainWrite(credentials.access_token)) {
-    fileWrite(JSON.stringify(metadata, null, 2));
+    const secretKept =
+      !credentials.client_secret ||
+      keychainWrite(
+        credentials.client_secret,
+        KEYCHAIN_CLIENT_ACCOUNT,
+        KEYCHAIN_CLIENT_LABEL,
+      );
+    fileWrite(
+      JSON.stringify(
+        // Only if the Keychain refused it. Both secrets share one store, so a
+        // reader never has to guess which half is where.
+        secretKept ? metadata : { ...metadata, client_secret: credentials.client_secret },
+        null,
+        2,
+      ),
+    );
     return "keychain";
   }
 
   fileWrite(
-    JSON.stringify({ ...metadata, access_token: credentials.access_token }, null, 2),
+    JSON.stringify(
+      {
+        ...metadata,
+        access_token: credentials.access_token,
+        ...(credentials.client_secret
+          ? { client_secret: credentials.client_secret }
+          : {}),
+      },
+      null,
+      2,
+    ),
   );
   return "file";
 }
@@ -338,7 +440,8 @@ export function saveCredentials(credentials: Credentials): CredentialSource {
 /** Remove credentials from every store. Returns the stores actually cleared. */
 export function clearCredentials(): CredentialSource[] {
   const cleared: CredentialSource[] = [];
-  if (keychainDelete()) cleared.push("keychain");
+  const clientCleared = keychainDelete(KEYCHAIN_CLIENT_ACCOUNT);
+  if (keychainDelete() || clientCleared) cleared.push("keychain");
   const path = credentialsFilePath();
   if (existsSync(path)) {
     rmSync(path, { force: true });

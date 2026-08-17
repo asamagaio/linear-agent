@@ -19,7 +19,10 @@ function startAuth() {
     // Keep the flow from opening a real browser window during the test.
     PATH: "/nonexistent",
   };
-  const child = spawn(process.execPath, [CLI, "auth", "--client-id", "cid", "--client-secret", "csecret"], {
+  // --browser explicitly: the default is now the client-credentials grant,
+  // which needs no browser at all. Everything below is about the fallback that
+  // still exists for an app without that grant enabled.
+  const child = spawn(process.execPath, [CLI, "auth", "--browser", "--client-id", "cid", "--client-secret", "csecret"], {
     env,
     stdio: ["ignore", "pipe", "pipe"],
   });

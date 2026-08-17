@@ -8,3 +8,6 @@ credentials.json
 *.token
 .env
 .env.*
+
+# macOS
+.DS_Store

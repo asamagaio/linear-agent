@@ -5,7 +5,7 @@ import {
   RateLimitError,
   redact,
 } from "./errors.js";
-import { loadCredentials, type Credentials } from "./creds.js";
+import { loadCredentials, saveCredentials, type Credentials } from "./creds.js";
 
 const MAX_ATTEMPTS = 5;
 const MAX_TOTAL_WAIT_MS = 60_000;
@@ -105,6 +105,7 @@ function translate(error: unknown): Error {
       `Linear rejected the app credentials: ${message}`,
       "The stored app token is invalid, expired or revoked. Run " +
         "`linear-agent auth` to re-authorize the app.",
+      true,
     );
   }
 
@@ -173,7 +174,89 @@ export async function rawWithToken<T>(
  * Build the authenticated context. Throws if there is no app-actor token —
  * there is deliberately no fallback to any other credential.
  */
+/**
+ * Did Linear reject this because the token is no longer good?
+ *
+ * The error has ALREADY been through `translate` by the time it gets here —
+ * `withRetry` translates before rethrowing — so this reads the translated flag,
+ * not `status === 401`. Reading the raw status here would silently never match,
+ * and the renewal below would look wired up while never firing.
+ */
+function isExpired(error: unknown): boolean {
+  return error instanceof CredentialError && error.expired;
+}
+
+/**
+ * Trade the app's own credentials for a fresh token, and keep it. Exported so
+ * the renewal can be tested without waiting thirty days for a real expiry.
+ *
+ * A client-credentials token carries no refresh token, so the 401 IS the expiry
+ * notice — that is the flow Linear documents, not a workaround. Returns
+ * undefined when this credential cannot renew (the browser flow, or one saved
+ * before renewal existed); the caller then reports the 401 as it always did.
+ */
+export async function renew(credentials: Credentials): Promise<string | undefined> {
+  if (
+    credentials.grant !== "client_credentials" ||
+    !credentials.client_id ||
+    !credentials.client_secret
+  ) {
+    return undefined;
+  }
+  // Imported here rather than at module scope: `auth.ts` pulls in the callback
+  // listener and the browser opener, and a `list` command has no business
+  // loading either.
+  const { fetchAppToken } = await import("./commands/auth.js");
+
+  // The SAME scopes it already holds. Asking for a different set revokes every
+  // existing app-actor token for the app, so a renewal must never widen them.
+  const token = await fetchAppToken(
+    credentials.client_id,
+    credentials.client_secret,
+    credentials.scopes || undefined,
+  );
+
+  saveCredentials({
+    ...credentials,
+    access_token: token.access_token,
+    created_at: new Date().toISOString(),
+    ...(token.expires_in
+      ? { expires_at: new Date(Date.now() + token.expires_in * 1000).toISOString() }
+      : {}),
+  });
+  return token.access_token;
+}
+
+/**
+ * Build the authenticated context. Throws if there is no app-actor token —
+ * there is deliberately no fallback to any other credential.
+ */
 export function getContext(): Context {
   const { credentials } = loadCredentials();
-  return { credentials, raw: makeRaw(credentials.access_token) };
+  let send = makeRaw(credentials.access_token);
+
+  // One renewal shared by every in-flight query. A command that fans out issues
+  // several queries at once, and they would all 401 together; without this they
+  // would each mint a token, and only the last one written would be the one
+  // kept.
+  let renewing: Promise<string | undefined> | undefined;
+
+  return {
+    credentials,
+    async raw<T>(query: string, variables: Record<string, unknown> = {}): Promise<T> {
+      try {
+        return await send<T>(query, variables);
+      } catch (error) {
+        // ONE retry, and only for an expired token. A 401 that survives a fresh
+        // token is a real credential problem — a revoked app, a rotated secret —
+        // and looping on it would turn a clear message into a hang.
+        if (!isExpired(error)) throw error;
+        renewing ??= renew(credentials);
+        const renewed = await renewing;
+        if (!renewed) throw error;
+        send = makeRaw(renewed);
+        return await send<T>(query, variables);
+      }
+    },
+  };
 }

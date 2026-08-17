@@ -44,6 +44,74 @@ interface TokenResponse {
   scope?: string;
 }
 
+/**
+ * Ask Linear for an app-actor token with nothing but the app's own credentials.
+ *
+ * This is the flow the CLI wants and did not use. The browser flow issues a
+ * token that lasts a day, paired with a refresh token this CLI never stored —
+ * so it asked a person to re-authorize roughly daily. `client_credentials`
+ * needs no browser and no person, and the token lasts 30 days.
+ *
+ * SCOPES MUST NOT DRIFT: Linear revokes every existing app-actor token for the
+ * app when one is requested with a different scope set. A renewal that quietly
+ * asked for one extra scope would log the app out of itself.
+ *
+ * Exported because renewal happens in `client.ts`, on a 401 — the documented
+ * way to notice this token has expired, since it carries no refresh token.
+ */
+/**
+ * Store scopes in ONE canonical form, whatever Linear echoed back.
+ *
+ * Renewal resends this string, and Linear treats a different scope set as a
+ * new authorization — it revokes every existing app-actor token for the app.
+ * Linear's authorize URL is comma-separated, but nothing promises the token
+ * response uses the same separator, and "read write" vs "read,write" must not
+ * be allowed to read as a change. The SET is preserved exactly; only the
+ * spelling is pinned.
+ */
+export function canonicalScopes(scope: string | undefined): string {
+  const parts = (scope ?? "").split(/[\s,]+/).filter((part) => part !== "");
+  return parts.length > 0 ? parts.join(",") : SCOPES.join(",");
+}
+
+export async function fetchAppToken(
+  clientId: string,
+  clientSecret: string,
+  scope: string = SCOPES.join(","),
+): Promise<TokenResponse> {
+  const body = new URLSearchParams({
+    grant_type: "client_credentials",
+    client_id: clientId,
+    client_secret: clientSecret,
+    scope,
+  });
+
+  const response = await fetch(TOKEN_URL, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: body.toString(),
+  });
+
+  const text = await response.text();
+  if (!response.ok) {
+    throw new ApiError(
+      `Client-credentials token request failed (HTTP ${response.status}): ${text.slice(0, 500)}`,
+      "The most likely cause is that the client credentials grant is not " +
+        "enabled on the Linear application. Turn it on in Edit application at " +
+        "https://linear.app/settings/api/applications, or authorize through " +
+        "the browser instead with `linear-agent auth --browser`.",
+    );
+  }
+
+  try {
+    return JSON.parse(text) as TokenResponse;
+  } catch {
+    throw new ApiError(
+      "Linear returned a token response that is not JSON.",
+    );
+  }
+}
+
 /* -------------------------------------------------------------------------- */
 /* Callback listener                                                           */
 /* -------------------------------------------------------------------------- */
@@ -296,6 +364,12 @@ function credentialSummary(credentials: Credentials, source: string) {
     authorized_at: credentials.created_at,
     actor: "app" as const,
     credential_store: source,
+    // The question `auth --status` exists to answer is "will this ask me to log
+    // in again?". A client-credentials token renews itself on the 401; anything
+    // else needs a person and a browser, and should say so BEFORE it expires.
+    grant: credentials.grant ?? "authorization_code",
+    renews: credentials.grant === "client_credentials",
+    expires_at: credentials.expires_at,
   };
 }
 
@@ -306,6 +380,15 @@ function printStatus(summary: ReturnType<typeof credentialSummary>): void {
   if (summary.scopes) line(`Scopes:        ${summary.scopes}`);
   if (summary.authorized_at) line(`Authorized:    ${summary.authorized_at}`);
   line(`Actor type:    app`);
+  if (summary.renews) {
+    const until = summary.expires_at ? ` (this one until ${summary.expires_at})` : "";
+    line(`Renewal:       automatic${until}`);
+  } else {
+    line(`Renewal:       MANUAL — this token came from the browser flow, lasts`);
+    line(`               about a day, and cannot renew itself. Re-run`);
+    line(`               \`linear-agent auth\` with the client id and secret to`);
+    line(`               switch to the self-renewing grant.`);
+  }
   line(`Stored in:     ${summary.credential_store}`);
   line();
   line("The access token is never printed.");
@@ -328,6 +411,64 @@ function authLogout(json: boolean): void {
   else line(`Removed stored credentials from: ${cleared.join(", ")}`);
 }
 
+async function runClientCredentials(
+  clientId: string,
+  clientSecret: string,
+  json: boolean,
+): Promise<void> {
+  if (!json) line("Requesting an app token (no browser needed)...");
+
+  const token = await fetchAppToken(clientId, clientSecret);
+
+  // The SAME invariant the browser flow enforces, for the same reason: a token
+  // that authenticates as a person would put that person's name on every
+  // comment the agent writes.
+  const identity = await rawWithToken<{
+    viewer: GqlViewer;
+    organization: GqlOrganization;
+  }>(token.access_token, WHOAMI);
+
+  if (identity.viewer.app !== true) {
+    throw new CredentialError(
+      `The client credentials grant produced a token for "${identity.viewer.name}", not an app token.`,
+      "Nothing was stored. Check that the Linear application is a workspace " +
+        "application rather than a personal integration.",
+    );
+  }
+
+  const credentials: Credentials = {
+    version: 1,
+    access_token: token.access_token,
+    app_user_id: identity.viewer.id,
+    app_name: identity.viewer.displayName || identity.viewer.name,
+    workspace_id: identity.organization.id,
+    workspace_name: identity.organization.name,
+    workspace_url_key: identity.organization.urlKey,
+    app_actor: true,
+    scopes: canonicalScopes(token.scope),
+    created_at: new Date().toISOString(),
+    grant: "client_credentials",
+    client_id: clientId,
+    client_secret: clientSecret,
+    ...(token.expires_in
+      ? { expires_at: new Date(Date.now() + token.expires_in * 1000).toISOString() }
+      : {}),
+  };
+
+  const source = saveCredentials(credentials);
+  const summary = credentialSummary(credentials, source);
+
+  if (json) {
+    emitJson({ authorized: true, ...summary });
+    return;
+  }
+  line(`Authorized as ${credentials.app_name} in ${credentials.workspace_name}.`);
+  line(`Token stored in the ${source}.`);
+  if (credentials.expires_at) {
+    line(`It expires ${credentials.expires_at.slice(0, 10)} — and renews itself.`);
+  }
+}
+
 async function runOAuth(args: ParsedArgs, json: boolean): Promise<void> {
   const clientId =
     getValue(args, "client-id") ?? process.env["LINEAR_CLIENT_ID"] ?? "";
@@ -344,6 +485,15 @@ async function runOAuth(args: ParsedArgs, json: boolean): Promise<void> {
     );
   }
   registerSecret(clientSecret);
+
+  // The default, because it is the one that does not come back tomorrow.
+  // `--browser` is the old authorization_code flow, kept for an app that has
+  // not enabled the grant — and named in the error when the grant is refused,
+  // so the way out is in the message rather than in somebody's memory.
+  if (!args.booleans.has("browser")) {
+    await runClientCredentials(clientId, clientSecret, json);
+    return;
+  }
 
   const state = randomBytes(32).toString("base64url");
   const authorizeUrl = new URL(AUTHORIZE_URL);
@@ -400,7 +550,7 @@ async function runOAuth(args: ParsedArgs, json: boolean): Promise<void> {
     workspace_name: identity.organization.name,
     workspace_url_key: identity.organization.urlKey,
     app_actor: true,
-    scopes: token.scope ?? SCOPES.join(","),
+    scopes: canonicalScopes(token.scope),
     created_at: new Date().toISOString(),
   };
 
@@ -432,5 +582,5 @@ export async function authCommand(args: ParsedArgs, json: boolean): Promise<void
 
 export const AUTH_FLAGS = {
   value: ["client-id", "client-secret"],
-  boolean: ["status", "logout"],
+  boolean: ["status", "logout", "browser"],
 } as const;

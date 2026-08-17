@@ -36,7 +36,9 @@ Create an application at <https://linear.app/settings/api/applications/new>.
 
 - The **name and icon become how the agent appears** in Linear — in mention menus, filters, and
   comment bylines. Pick something short and recognisable.
-- Redirect URI: `http://localhost:8787/callback`
+- **Enable the client credentials grant.** This is the one that matters for day-to-day use — see
+  below. It is a toggle in *Edit application*.
+- Redirect URI: `http://localhost:8787/callback` — only needed for the browser fallback.
 - Webhooks: **leave disabled.** They are not used.
 
 Copy the client ID and client secret.
@@ -49,14 +51,42 @@ linear-agent auth --client-id <ID> --client-secret <SECRET>
 
 or set `LINEAR_CLIENT_ID` / `LINEAR_CLIENT_SECRET` and run `linear-agent auth`.
 
-This starts a throwaway listener on `127.0.0.1:8787`, opens the browser at Linear's authorize URL
-with `actor=app` and the scopes `read,write,app:assignable,app:mentionable`, exchanges the code for
-a token, records the app's user id, and shuts the listener down. Nothing is left running.
+No browser opens. The CLI asks Linear for an app token with the application's own credentials
+(`grant_type=client_credentials`), confirms with `viewer.app` that what came back really is an app
+actor, and stores it.
 
-`actor=app` is what installs the integration as its own app user. If the resulting token turns out
-to be a *user* token, the CLI refuses to store it and tells you why.
+**The token lasts 30 days and renews itself.** It carries no refresh token, so the way it renews is
+the documented one: the next request that gets a 401 asks for a new token with the same client id
+and secret, stores it, and retries once. Nothing expires in your face and nothing asks you to log in
+again. `linear-agent auth --status` says `Renewal: automatic` when this is in effect.
 
-Apps using `actor=app` cannot also request the `admin` scope, so the CLI does not ask for it.
+If the resulting token turns out to be a *user* token rather than an app one, the CLI refuses to
+store it and tells you why — a user token would put your name on every comment the agent writes.
+
+Apps acting as an app cannot also request the `admin` scope, so the CLI does not ask for it.
+
+#### The browser fallback
+
+```bash
+linear-agent auth --browser --client-id <ID> --client-secret <SECRET>
+```
+
+For an application without the client credentials grant enabled. It starts a throwaway listener on
+`127.0.0.1:8787`, opens Linear's authorize URL with `actor=app` and the scopes
+`read,write,app:assignable,app:mentionable`, exchanges the code for a token, and shuts the listener
+down. Nothing is left running.
+
+**This token lasts about a day and cannot renew itself** — the flow returns a refresh token that
+this CLI deliberately does not store, so it comes back asking for a browser roughly daily. That is
+what the client credentials grant exists to avoid. `auth --status` marks it `Renewal: MANUAL`.
+
+#### One thing not to do
+
+Never let the requested scopes drift between authorizations. Linear treats a different scope set as
+a new authorization and **revokes every existing app-actor token for the application** — including
+the ones on your other machines. The CLI stores the granted scopes in one canonical form and resends
+exactly that set on renewal, so this cannot happen by accident; it is worth knowing before editing
+`SCOPES` by hand.
 
 ### 3. Confirm
 
@@ -214,7 +244,9 @@ Copying a Keychain entry between machines is possible and a bad habit: it spread
 secret with no record of where it ended up. Re-authorizing is cheap and leaves a fresh, revocable
 token on each machine.
 
-What you *do* need to carry is the **client id and secret** — keep them in a password manager. The
+What you *do* need to carry is the **client id and secret** — keep them in a password manager. They
+are also what makes renewal work, so the CLI keeps them beside the token: the client secret goes
+into its own Keychain item (never the metadata file), and `auth --logout` clears both. The
 Linear application itself is registered against the workspace, not the machine, so it survives the
 move; you are only re-issuing a token for it. The app identity (`claude-agent`, and its app user id) is
 also workspace-scoped, so comments from the new machine are attributed to exactly the same actor.
