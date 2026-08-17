@@ -89,6 +89,29 @@ jobs:
           id_lc=$(printf '%s' "$TICKET_ID" | tr '[:upper:]' '[:lower:]')
           echo "branch=linear/${id_lc}${slug:+-$slug}-r${GITHUB_RUN_ID}" >> "$GITHUB_OUTPUT"
 
+      # Model and effort are selectable from the ticket, but only through
+      # labels: a controlled vocabulary someone had to create, mapped here to
+      # fixed values. The ticket picks from a menu; it never supplies a value.
+      # Letting free text choose the model would hand anyone with workspace
+      # access a tap into the operator's subscription quota.
+      - name: Resolve agent settings from labels
+        id: agent
+        run: |
+          model=sonnet
+          effort=high
+          while IFS= read -r label; do
+            case "$label" in
+              agent:opus)         model=opus ;;
+              agent:sonnet)       model=sonnet ;;
+              agent:effort-low)   effort=low ;;
+              agent:effort-high)  effort=high ;;
+              agent:effort-max)   effort=max ;;
+            esac
+          done < <(jq -r '.labels[]? // empty' "$RUNNER_TEMP/ticket.json" | tr '[:upper:]' '[:lower:]')
+          echo "model=$model"   >> "$GITHUB_OUTPUT"
+          echo "effort=$effort" >> "$GITHUB_OUTPUT"
+          echo "Agent settings: model=$model effort=$effort"
+
       # The injection firewall. `linear-agent auth` materializes the client
       # secret and token into a plaintext file store on Linux, and the agent's
       # Read tool reaches any absolute path. A prompt-injected ticket must not
@@ -137,6 +160,8 @@ jobs:
                ticket file.
             6. Do not merge the PR. Do not edit anything under .github/workflows/.
           claude_args: |
+            --model ${{ steps.agent.outputs.model }}
+            --effort ${{ steps.agent.outputs.effort }}
             --max-turns 50
             --allowedTools "Read,Write,Edit,MultiEdit,Glob,Grep,TodoWrite,Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git add:*),Bash(git commit:*),Bash(git push:*),Bash(npm ci),Bash(npm run typecheck),Bash(npm run build),Bash(npm test),Bash(npx tsc:*),Bash(gh pr create:*)"
 

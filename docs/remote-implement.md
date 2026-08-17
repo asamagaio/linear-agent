@@ -50,6 +50,28 @@ Or from the Actions tab → *Implement Linear ticket* → *Run workflow*.
 Watch it with `gh run watch`, or just wait for the comment to appear on the ticket. Ticket ids are
 validated against `^[A-Za-z]{1,10}-[0-9]{1,6}$` before anything else runs, and lowercase is fine.
 
+## Choosing the model from the ticket
+
+Model and effort are selectable per ticket, through **labels** — never through the description:
+
+| Label | Effect |
+|---|---|
+| `agent:opus` | Use Opus instead of the default |
+| `agent:sonnet` | Use Sonnet (the default) |
+| `agent:effort-low` / `agent:effort-high` / `agent:effort-max` | Reasoning effort |
+
+Default when no label applies: `sonnet` at `high` effort.
+
+Create the labels once in Linear and then apply them from your phone like any other label. Unknown
+or absent labels fall back to the defaults.
+
+The reason this is labels rather than a line in the description: the description is untrusted text.
+Letting it choose the model would hand anyone who can file a ticket a tap into your subscription
+quota. A label is a controlled vocabulary — someone had to create it — and the workflow maps a fixed
+set of names to fixed values with a `case` statement. The ticket picks from a menu; it never supplies
+a value. Anything unrecognised, including `agent:opus; rm -rf /` or `--model=evil`, resolves to the
+default.
+
 ## Security model
 
 The interesting problem here is that **a Linear ticket body is untrusted text**, written by anyone
