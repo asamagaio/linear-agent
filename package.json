@@ -21,7 +21,7 @@
     "watch": "tsc --watch",
     "prepare": "tsc",
     "typecheck": "tsc --noEmit",
-    "test": "tsc && node --test --test-concurrency=1 test/",
+    "test": "tsc && node --test --test-concurrency=1 test/*.test.mjs",
     "setup": "bash scripts/bootstrap.sh",
     "claude-md:check": "bash scripts/check-claude-md.sh"
   },
