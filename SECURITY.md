@@ -35,6 +35,21 @@ The token is written to the Keychain by feeding `security` the value on **stdin*
 appears in the process table. It is read back and compared before the write is accepted, because
 `security` silently truncates a prompted secret at 128 bytes.
 
+## Secrets in CI
+
+The [remote implement workflow](docs/remote-implement.md) stores `LINEAR_CLIENT_ID`,
+`LINEAR_CLIENT_SECRET` and `CLAUDE_CODE_OAUTH_TOKEN` as GitHub Actions secrets, each scoped to the
+individual steps that need it rather than to the job.
+
+On a Linux runner there is no Keychain, so `auth` writes the plaintext file store described above.
+That file is deleted before any agent processes ticket text, and again when the job ends — an agent
+handling untrusted input must never share a filesystem with a credential it has no reason to read.
+Nothing under `~/.config` is ever cached or uploaded as an artifact.
+
+Ticket bodies fetched by that workflow are untrusted input in the sense described below, with the
+added weight that the reader is an agent holding write access to the repository. They are passed as
+a file rather than interpolated into any GitHub expression, and the prompt frames them as data.
+
 ## The invariant
 
 The CLI authenticates only as a Linear *application*. It never falls back to a personal API key or a
