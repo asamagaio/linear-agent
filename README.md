@@ -1,7 +1,9 @@
 # linear-agent
 
+[![CI](https://github.com/asamagaio/linear-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/asamagaio/linear-agent/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg)](package.json)
+[![Dependencies](https://img.shields.io/badge/runtime%20deps-1-brightgreen.svg)](package.json)
 
 **A CLI that lets a coding agent read and write Linear issues under its own identity, not yours.**
 
@@ -47,6 +49,24 @@ The CLI authenticates **only** with an `actor=app` OAuth token. It never uses a 
 a user OAuth token — either would make every comment appear as the human. If no app token is
 present, every command fails loudly (exit code `3`) and never falls back to another credential.
 `LINEAR_API_KEY` and friends are ignored on purpose, and the error says so explicitly.
+
+## Before you install it
+
+This tool wants OAuth credentials and writes a token to your Keychain. You should want evidence
+before handing that to a stranger's repository, so here is what is checkable:
+
+- **One runtime dependency** (`@linear/sdk`). That is the entire supply chain.
+- **No install scripts.** From the registry, nothing runs on install — verify with
+  `npm install -g --ignore-scripts linear-agent`. CI runs exactly that on every push, and asserts
+  the CLI refuses to act without credentials.
+- **Published with [npm provenance](https://docs.npmjs.com/generating-provenance-statements)**,
+  which attests which commit and workflow built the tarball.
+- **Secrets go to the Keychain, never to stdout, and never anywhere but `api.linear.app`.**
+  [SECURITY.md](SECURITY.md) sets out the whole credential model, including what is stored in plain
+  text and what is not.
+
+Installing from a git clone runs a build (`prepare` → `tsc`). Prefer the registry if you would
+rather not run a build script from someone you do not know.
 
 ## Requirements
 

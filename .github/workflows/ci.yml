@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (${{ matrix.os }}, node ${{ matrix.node }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # macOS is where the Keychain path actually exists; Linux proves the
+        # file-store fallback is not an afterthought.
+        os: [ubuntu-latest, macos-latest]
+        node: ['20', '22']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+  # The published package must be installable without running a single
+  # lifecycle script. Anyone evaluating this repo can reproduce this job.
+  install-without-scripts:
+    name: install with --ignore-scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+      - run: npm run build
+
+      - name: Pack and install the tarball with no scripts
+        run: |
+          npm pack
+          npm install -g --ignore-scripts ./linear-agent-*.tgz
+          linear-agent --version
+          linear-agent --help > /dev/null
+
+      - name: It must refuse to run without app credentials
+        run: |
+          set +e
+          out=$(linear-agent whoami 2>&1)
+          code=$?
+          set -e
+          echo "$out"
+          [ "$code" -eq 3 ] || { echo "expected exit 3, got $code"; exit 1; }
+          echo "$out" | grep -q "No Linear app credentials found" || exit 1
