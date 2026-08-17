@@ -11,3 +11,6 @@ credentials.json
 
 # macOS
 .DS_Store
+
+# Your Linear layout — see claude-md.config.example
+claude-md.config

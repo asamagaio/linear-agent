@@ -1,11 +1,45 @@
 # linear-agent
 
-A small CLI that lets a coding agent (Claude Code) read and write Linear issues **under its own
-identity**, not the human operator's. Comments appear in Linear as a distinct non-human actor with
-its own name and avatar, so a thread reads as a conversation between two participants.
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Node](https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg)](package.json)
 
-There is no webhook receiver, no HTTP server that outlives a command, no daemon, and no session
-triggering. The human starts Claude Code; Claude Code calls this CLI.
+**A CLI that lets a coding agent read and write Linear issues under its own identity, not yours.**
+
+Comments land in Linear as a distinct non-human actor with its own name and avatar, so the thread
+reads as a conversation between two participants — and you can answer from the Linear mobile app.
+
+```console
+$ linear-agent read ENG-42
+ENG-42  Retry loop drops the last error
+https://linear.app/acme/issue/ENG-42/retry-loop-drops-the-last-error
+
+State:     In Progress
+Team:      ENG — Engineering
+Project:   Platform (In Progress)
+Delegate:  claude-agent (app)
+
+Comments (2)
+-----------
+
+claude-agent (app) · 2026-08-11 09:14
+Reproduced: the final attempt's error is overwritten before it is thrown.
+
+you · 2026-08-11 09:20
+Good catch — ship the fix behind the existing flag.
+```
+
+Everything above was written by two different actors. That is the whole point.
+
+### Why not just use an API key?
+
+A personal API key makes every comment appear as **you**. The thread stops being a conversation and
+the agent's work becomes indistinguishable from your own. This CLI only ever authenticates as a
+Linear *application*, and refuses to start if it finds anything else.
+
+### What this is not
+
+No webhook receiver, no HTTP server that outlives a command, no daemon, no session triggering.
+You start the agent; the agent calls this CLI.
 
 ## The invariant
 
@@ -248,7 +282,7 @@ What you *do* need to carry is the **client id and secret** — keep them in a p
 are also what makes renewal work, so the CLI keeps them beside the token: the client secret goes
 into its own Keychain item (never the metadata file), and `auth --logout` clears both. The
 Linear application itself is registered against the workspace, not the machine, so it survives the
-move; you are only re-issuing a token for it. The app identity (`claude-agent`, and its app user id) is
+move; you are only re-issuing a token for it. The app identity (its display name and app user id) is
 also workspace-scoped, so comments from the new machine are attributed to exactly the same actor.
 
 ### Without git
@@ -278,6 +312,24 @@ Set `LINEAR_AGENT_DEBUG=1` to include stack traces on unexpected errors (still r
 
 ## Wiring it up for Claude Code
 
-See the `## Linear` section of [CLAUDE.md](CLAUDE.md) — copy it into the `CLAUDE.md` of whichever
-repo the agent works in. Without it, Claude Code will not reach for the tool unless told to every
-time.
+Without instructions, the agent will not reach for this tool unless told to every single time. The
+instructions live in [`docs/claude-md-section.md`](docs/claude-md-section.md) and are installed into
+`~/.claude/CLAUDE.md` (which applies to every project) by:
+
+```bash
+npm run setup
+```
+
+That template is generic. Your workspace, teams and example identifiers come from
+`claude-md.config`, which is gitignored so your Linear layout never lands in a commit:
+
+```bash
+cp claude-md.config.example claude-md.config   # then edit it
+```
+
+Editing the installed `~/.claude/CLAUDE.md` by hand is the easy mistake: it works locally, is
+invisible to git, and is lost on the next machine. This reports that drift:
+
+```bash
+npm run claude-md:check
+```

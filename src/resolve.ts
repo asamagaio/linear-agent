@@ -133,7 +133,7 @@ export async function fetchIssueDetail(
 }
 
 /**
- * A team re-key changes every identifier in it: APP-6 becomes OPS-6. Linear
+ * A team re-key changes every identifier in it: OLD-6 becomes NEW-6. Linear
  * still resolves the old one through `previousIdentifiers`, but the team-key +
  * number filter cannot — no team has the old key any more. Falling back to
  * `issue(id:)` keeps stale identifiers working, and keeps `read` consistent

@@ -1,0 +1,20 @@
+# Copy to `claude-md.config` and edit. That file is gitignored: it holds your
+# Linear layout, which has no business in a shared repository.
+#
+# These values fill the placeholders in docs/claude-md-section.md when
+# `npm run setup` installs it into ~/.claude/CLAUDE.md.
+
+# Your Linear workspace url key — the `acme` in linear.app/acme/…
+WORKSPACE="acme"
+
+# How to describe your teams in one phrase. Markdown, since it lands in a .md.
+TEAMS='`ENG` (Engineering) and `OPS` (Operations)'
+
+# The app's display name in Linear, as `linear-agent whoami` reports it.
+AGENT="claude-agent"
+
+# A real issue identifier, used as the example in the instructions.
+ISSUE="ENG-42"
+
+# A real project name, used as the example.
+PROJECT="Platform"

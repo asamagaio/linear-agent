@@ -36,10 +36,10 @@ if grep -qF "$MARKER" "$CLAUDE_MD"; then
 else
   {
     printf '\n%s\n' "$MARKER"
-    cat "${REPO_ROOT}/docs/claude-md-section.md"
+    bash "${REPO_ROOT}/scripts/render-claude-md.sh"
   } >>"$CLAUDE_MD"
   echo "    appended the Linear section to ${CLAUDE_MD}"
-  echo "    edit the workspace and team keys in it to match your Linear setup"
+  echo "    values came from claude-md.config (see claude-md.config.example)"
 fi
 
 echo

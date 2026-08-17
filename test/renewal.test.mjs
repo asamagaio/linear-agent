@@ -73,7 +73,7 @@ const CREDENTIALS = {
   app_user_id: "user-1",
   app_name: "Claude CLI",
   workspace_id: "ws-1",
-  workspace_name: "acme",
+  workspace_name: "Acme",
   workspace_url_key: "acme",
   app_actor: true,
   scopes: "read,write,app:assignable",

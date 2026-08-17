@@ -10,7 +10,9 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SOURCE="${REPO_ROOT}/docs/claude-md-section.md"
+SOURCE="$(mktemp -t linear-agent-claude-md)"
+trap 'rm -f "$SOURCE"' EXIT
+bash "${REPO_ROOT}/scripts/render-claude-md.sh" > "$SOURCE"
 INSTALLED="${HOME}/.claude/CLAUDE.md"
 MARKER="<!-- linear-agent:instructions -->"
 
@@ -31,11 +33,11 @@ fi
 INSTALLED_SECTION="$(awk -v marker="$MARKER" 'found {print} index($0, marker) {found=1}' "$INSTALLED")"
 
 if diff -u "$SOURCE" <(printf '%s\n' "$INSTALLED_SECTION") >/tmp/linear-agent-claude-md.diff 2>&1; then
-  echo "in sync: ${INSTALLED} matches docs/claude-md-section.md"
+  echo "in sync: ${INSTALLED} matches docs/claude-md-section.md (rendered)"
   exit 0
 fi
 
-echo "DRIFT between docs/claude-md-section.md (-) and ${INSTALLED} (+):"
+echo "DRIFT between docs/claude-md-section.md rendered (-) and ${INSTALLED} (+):"
 echo
 cat /tmp/linear-agent-claude-md.diff
 echo
