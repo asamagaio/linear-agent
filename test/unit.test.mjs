@@ -5,6 +5,7 @@ import { parse, visit, Kind } from "graphql";
 import * as gql from "../dist/gql.js";
 import { parseArgs, getValue, getAll, getPositiveInt } from "../dist/args.js";
 import { parseIdentifier, isUuid, resolveStateByName } from "../dist/resolve.js";
+import { LIST_FLAGS } from "../dist/commands/list.js";
 import { sanitizeForTerminal, truncate, actorLabel } from "../dist/output.js";
 import { redact, registerSecret } from "../dist/errors.js";
 
@@ -99,6 +100,15 @@ test("rejects a value flag with no value", () => {
 
 test("rejects a value given to a boolean flag", () => {
   assert.throws(() => parseArgs(["--delegated=1"], LIST_SPEC), /does not take a value/);
+});
+
+test("list accepts --project and --label alongside the other filters", () => {
+  const a = parseArgs(
+    ["--team", "APPS", "--project", "Platform", "--label", "bug"],
+    LIST_FLAGS,
+  );
+  assert.equal(getValue(a, "project"), "Platform");
+  assert.equal(getValue(a, "label"), "bug");
 });
 
 test("--limit validates and caps", () => {

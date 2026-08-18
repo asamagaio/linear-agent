@@ -1,6 +1,6 @@
 import { getContext } from "../client.js";
 import { LIST_ISSUES, type GqlIssueSummary } from "../gql.js";
-import { fetchTeamByKey, resolveProject } from "../resolve.js";
+import { fetchTeamByKey, resolveProject, verifyLabelName } from "../resolve.js";
 import { actorLabel, emitJson, line, truncate } from "../output.js";
 import { getPositiveInt, getValue, type ParsedArgs } from "../args.js";
 
@@ -8,7 +8,7 @@ const DEFAULT_LIMIT = 25;
 const MAX_LIMIT = 250;
 
 export const LIST_FLAGS = {
-  value: ["team", "state", "project", "limit"],
+  value: ["team", "state", "project", "label", "limit"],
   boolean: ["delegated"],
 } as const;
 
@@ -42,6 +42,7 @@ export async function listCommand(args: ParsedArgs, json: boolean): Promise<void
   const team = getValue(args, "team");
   const state = getValue(args, "state");
   const project = getValue(args, "project");
+  const label = getValue(args, "label");
   const delegated = args.booleans.has("delegated");
   const limit = getPositiveInt(args, "limit", DEFAULT_LIMIT, MAX_LIMIT);
 
@@ -49,6 +50,7 @@ export async function listCommand(args: ParsedArgs, json: boolean): Promise<void
   if (team) filter["team"] = { key: { eqIgnoreCase: team } };
   if (state) filter["state"] = { name: { eqIgnoreCase: state } };
   if (project) filter["project"] = { name: { eqIgnoreCase: project } };
+  if (label) filter["labels"] = { some: { name: { eqIgnoreCase: label } } };
   if (delegated) filter["delegate"] = { id: { eq: ctx.credentials.app_user_id } };
 
   const data = await ctx.raw<{
@@ -67,6 +69,7 @@ export async function listCommand(args: ParsedArgs, json: boolean): Promise<void
   // one request.
   if (issues.length === 0) {
     if (project) await resolveProject(ctx, project);
+    if (label) await verifyLabelName(ctx, label);
     if (team) await fetchTeamByKey(ctx, team);
   }
 
@@ -78,6 +81,7 @@ export async function listCommand(args: ParsedArgs, json: boolean): Promise<void
         team: team ?? null,
         state: state ?? null,
         project: project ?? null,
+        label: label ?? null,
         delegated_to_app: delegated,
         limit,
       },
