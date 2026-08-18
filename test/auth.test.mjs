@@ -7,6 +7,8 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 
+import { waitForPortFree } from "./helpers.mjs";
+
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const CLI = join(ROOT, "dist", "index.js");
 const CALLBACK = "http://127.0.0.1:8787/callback";
@@ -64,11 +66,6 @@ async function waitForAuthorizeUrl(session, timeoutMs = 10_000) {
 async function get(url) {
   const response = await fetch(url, { signal: AbortSignal.timeout(5000) });
   return { status: response.status, body: await response.text() };
-}
-
-function portIsFree() {
-  const lsof = spawnSync("lsof", ["-nP", "-iTCP:8787"], { encoding: "utf8" });
-  return (lsof.stdout ?? "").trim() === "";
 }
 
 test("the authorize URL carries actor=app and the agent scopes", async () => {
@@ -140,8 +137,7 @@ test("a denied authorization exits non-zero and frees the port", async () => {
   assert.match(session.stderr, /The user said no/);
 
   // Acceptance criterion 7: nothing left running, no open port.
-  await delay(250);
-  assert.ok(portIsFree(), "port 8787 is still held after the command exited");
+  assert.ok(await waitForPortFree(8787), "port 8787 is still held after the command exited");
 });
 
 test("nothing stores credentials when authorization does not complete", async () => {
@@ -152,5 +148,5 @@ test("nothing stores credentials when authorization does not complete", async ()
   await session.exited;
 
   assert.ok(!session.stdout.includes("Authorized"), "must not claim success");
-  assert.ok(portIsFree());
+  assert.ok(await waitForPortFree(8787));
 });

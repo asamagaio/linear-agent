@@ -6,6 +6,8 @@ import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { waitForPortFree } from "./helpers.mjs";
+
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const CLI = join(ROOT, "dist", "index.js");
 
@@ -223,7 +225,7 @@ test("status requires a target state name", () => {
 /* Nothing is left running                                                     */
 /* -------------------------------------------------------------------------- */
 
-test("commands exit promptly and leave no listener on port 8787", () => {
+test("commands exit promptly and leave no listener on port 8787", async () => {
   const config = writeCredentials(freshConfig());
 
   const started = Date.now();
@@ -233,13 +235,7 @@ test("commands exit promptly and leave no listener on port 8787", () => {
   const elapsed = Date.now() - started;
   assert.ok(elapsed < 15_000, `commands took ${elapsed}ms — something is hanging`);
 
-  const lsof = spawnSync("lsof", ["-nP", "-iTCP:8787"], { encoding: "utf8" });
-  // lsof exits 1 with no output when nothing matches.
-  assert.equal(
-    (lsof.stdout ?? "").trim(),
-    "",
-    `something is listening on 8787:\n${lsof.stdout}`,
-  );
+  assert.ok(await waitForPortFree(8787), "something is still listening on 8787");
 });
 
 test("auth --logout clears the stored credentials", () => {
