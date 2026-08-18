@@ -253,22 +253,6 @@ Issue and comment text is written by anyone with workspace access. The CLI trans
 and never interpolates it into a shell command. Human-readable output strips terminal control
 characters so hostile text cannot repaint your terminal; `--json` output is byte-exact.
 
-## Implementing a ticket remotely
-
-You can hand a ticket to a Claude Code session running in GitHub Actions, which implements it on a
-branch, opens a pull request, and comments the PR link back on the ticket as the app actor:
-
-```bash
-gh workflow run implement.yml -f issue=ENG-42
-```
-
-The trigger is always a person — there is no webhook and no polling. Ticket text is treated as
-untrusted input throughout: it reaches the agent as a file rather than through any GitHub
-expression, and Linear credentials are scrubbed from the runner before the agent starts.
-
-Setup, the security model, and how to copy the workflow into another repository:
-[docs/remote-implement.md](docs/remote-implement.md). That file ships with the npm package.
-
 ## Moving to another machine
 
 Three things have to travel, and only two of them can be copied.
