@@ -104,6 +104,7 @@ test("with no credentials, every command fails with exit 3", () => {
   for (const argv of [
     ["whoami"],
     ["list"],
+    ["list", "--label", "bug"],
     ["read", "ENG-42"],
     ["comment", "ENG-42", "hello"],
     ["status", "ENG-42", "In Progress"],

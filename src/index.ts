@@ -19,7 +19,7 @@ Usage:
   linear-agent auth --status
   linear-agent auth --logout
   linear-agent whoami
-  linear-agent list [--team KEY] [--state NAME] [--project NAME] [--delegated] [--limit N]
+  linear-agent list [--team KEY] [--state NAME] [--project NAME] [--label NAME] [--delegated] [--limit N]
   linear-agent projects [--team KEY] [--status NAME] [--limit N]
   linear-agent read <ID>
   linear-agent comment <ID> <body|->

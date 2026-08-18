@@ -275,6 +275,24 @@ export async function resolveProject(
   return { id: candidates[0]!.id, name: candidates[0]!.name };
 }
 
+/**
+ * Verify a label name exists somewhere in the workspace. Used the same way
+ * {@link resolveProject} is: only when a filter would otherwise report an
+ * empty result, so a typo does not read as "no work here".
+ */
+export async function verifyLabelName(ctx: Context, name: string): Promise<void> {
+  const data = await ctx.raw<{ issueLabels: { nodes: GqlLabel[] } }>(
+    LABEL_BY_NAME,
+    { name },
+  );
+  if (data.issueLabels.nodes.length === 0) {
+    throw new NotFoundError(
+      `No label named "${name}" is visible to this app.`,
+      "Check the spelling, or run `linear-agent read` on an issue that has the label.",
+    );
+  }
+}
+
 /** Resolve a label name to an id, preferring the team's own label. */
 export async function resolveLabelId(
   ctx: Context,
