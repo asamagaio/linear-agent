@@ -35,7 +35,7 @@ permissions:
 jobs:
   implement:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
 
     steps:
       # The ticket id is the only dispatch input, and ticket TEXT never passes
@@ -162,7 +162,7 @@ jobs:
           claude_args: |
             --model ${{ steps.agent.outputs.model }}
             --effort ${{ steps.agent.outputs.effort }}
-            --max-turns 50
+            --max-turns 200
             --allowedTools "Read,Write,Edit,MultiEdit,Glob,Grep,TodoWrite,Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git add:*),Bash(git commit:*),Bash(git push:*),Bash(npm ci),Bash(npm run typecheck),Bash(npm run build),Bash(npm test),Bash(npx tsc:*),Bash(gh pr create:*)"
 
       # The action hides its output by default, which makes a failed run opaque.
