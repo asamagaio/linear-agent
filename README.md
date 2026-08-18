@@ -172,7 +172,7 @@ linear-agent auth --logout    # remove credentials from both stores
 | Command | Behaviour |
 |---|---|
 | `linear-agent whoami` | Prints the app user identity and confirms the token is an app actor, not a user actor. |
-| `linear-agent list [--team KEY] [--state NAME] [--project NAME] [--delegated] [--limit N]` | Lists issues, most recently updated first. `--delegated` filters to issues delegated to this app. |
+| `linear-agent list [--team KEY] [--state NAME] [--project NAME] [--label NAME] [--delegated] [--limit N]` | Lists issues, most recently updated first. `--delegated` filters to issues delegated to this app. |
 | `linear-agent projects [--team KEY] [--status NAME] [--limit N]` | Lists projects with status, progress, teams and lead. |
 | `linear-agent read <ID>` | Full issue: title, description, state, labels, assignee, delegate, and all comments in order with authors and timestamps. |
 | `linear-agent comment <ID> <body>` | Posts a comment as the app. Pass `-` to read the body from stdin. |
@@ -209,10 +209,10 @@ linear-agent create --team ENG --title "..." --project "Platform"
 `read` and `list` both report the issue's project. A name that matches more than one project is an
 error listing the matches rather than a silent guess.
 
-When `list` returns nothing *and* a `--project` or `--team` filter was given, the name is verified
-before reporting an empty result — a typo would otherwise look like "no work here", which is a wrong
-conclusion rather than a missing one. `--state` does not get this treatment, since workflow states
-are per-team and there is no team to check against when the filter is used alone.
+When `list` returns nothing *and* a `--project`, `--label`, or `--team` filter was given, the name is
+verified before reporting an empty result — a typo would otherwise look like "no work here", which is
+a wrong conclusion rather than a missing one. `--state` does not get this treatment, since workflow
+states are per-team and there is no team to check against when the filter is used alone.
 
 ### Markdown bodies
 
