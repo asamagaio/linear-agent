@@ -138,6 +138,7 @@ function htmlPage(title: string, detail: string): string {
  * may pick either loopback address.
  */
 function waitForCallback(expectedState: string): {
+  ready: Promise<void>;
   result: Promise<CallbackResult>;
   shutdown: () => Promise<void>;
 } {
@@ -150,6 +151,9 @@ function waitForCallback(expectedState: string): {
     resolveResult = resolve;
     rejectResult = reject;
   });
+  // Awaited by both `ready` and `result`; without this an early bind failure
+  // would surface once as an error and once as an unhandled rejection.
+  result.catch(() => {});
 
   const timer = setTimeout(() => {
     if (settled) return;
@@ -264,6 +268,8 @@ function waitForCallback(expectedState: string): {
   const ready = listen(LOOPBACK_V4, true).then(() => listen(LOOPBACK_V6, false));
 
   return {
+    // Exposed so the caller can bind before it announces that it is waiting.
+    ready,
     result: ready.then(() => result),
     shutdown,
   };
@@ -509,6 +515,11 @@ async function runOAuth(args: ParsedArgs, json: boolean): Promise<void> {
 
   let token: TokenResponse;
   try {
+    // Bind before saying a word. Printing the authorize URL first means telling
+    // the operator we are listening while the port may still be closed — a race
+    // that a fast browser, or a pasted URL, can lose.
+    await listener.ready;
+
     if (!json) {
       line("Opening Linear to authorize the app...");
       line();
