@@ -36,6 +36,10 @@ jobs:
   implement:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      # Where the ticket lands once the PR is open. Must exist in the team's
+      # workflow; `linear-agent status` lists the valid names when it does not.
+      REVIEW_STATE: "In Progress"
 
     steps:
       # The ticket id is the only dispatch input, and ticket TEXT never passes
@@ -192,7 +196,7 @@ jobs:
           url=$(gh pr view "$BRANCH" --json url -q .url 2>/dev/null || true)
           echo "url=$url" >> "$GITHUB_OUTPUT"
 
-      - name: Report success to Linear
+      - name: Comment the PR on the ticket
         if: ${{ steps.pr.outputs.url != '' }}
         env:
           LINEAR_CLIENT_ID: ${{ secrets.LINEAR_CLIENT_ID }}
@@ -204,12 +208,26 @@ jobs:
           printf 'Opened a pull request for this ticket: %s\n\n_Remote implement run: %s_\n' \
             "$PR_URL" "$RUN_URL" \
             | node "$GITHUB_WORKSPACE/dist/index.js" comment "$TICKET_ID" -
-          node "$GITHUB_WORKSPACE/dist/index.js" status "$TICKET_ID" "In Review"
+
+      # Deliberately non-fatal. The PR and the comment are the result; a state
+      # name that does not exist in this team is a misconfiguration worth a
+      # warning, not a red run that implies the work failed. `status` exits 4
+      # and lists the valid names, which the log will show.
+      - name: Move the ticket to the review state
+        if: ${{ steps.pr.outputs.url != '' }}
+        continue-on-error: true
+        env:
+          LINEAR_CLIENT_ID: ${{ secrets.LINEAR_CLIENT_ID }}
+          LINEAR_CLIENT_SECRET: ${{ secrets.LINEAR_CLIENT_SECRET }}
+        run: |
+          node "$GITHUB_WORKSPACE/dist/index.js" auth --json > /dev/null
+          node "$GITHUB_WORKSPACE/dist/index.js" status "$TICKET_ID" "$REVIEW_STATE" \
+            || echo "::warning::Could not move $TICKET_ID to '$REVIEW_STATE' — see the valid states above and set REVIEW_STATE at the top of this workflow."
 
       # Best effort: the dispatcher may be watching Linear on a phone, which is
       # the point of the app-actor CLI. Never touches the status on failure.
       - name: Report failure to Linear
-        if: ${{ !cancelled() && (failure() || (steps.claude.outcome == 'success' && steps.pr.outputs.url == '')) }}
+        if: ${{ !cancelled() && steps.pr.outputs.url == '' }}
         env:
           LINEAR_CLIENT_ID: ${{ secrets.LINEAR_CLIENT_ID }}
           LINEAR_CLIENT_SECRET: ${{ secrets.LINEAR_CLIENT_SECRET }}
